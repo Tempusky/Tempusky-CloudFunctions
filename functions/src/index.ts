@@ -132,5 +132,6 @@ export const notifyUsersToSyncData = functions.firestore
         }
       }
     });
+    await snapshot.ref.delete();
     return null;
   });
