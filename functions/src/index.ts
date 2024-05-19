@@ -49,7 +49,6 @@ export const writeLocationFromCoordinates = functions.firestore
         location = locationData.locality;
       }
 
-
       const cordResponse = await axios.get(
         "https://geocoding-api.open-meteo.com/v1/search",
         {
@@ -79,5 +78,59 @@ export const writeLocationFromCoordinates = functions.firestore
       console.error("Error fetching location data", error);
     }
 
+    return null;
+  });
+
+export const notifyUsersToSyncData = functions.firestore
+  .document("requests/{documentId}")
+  .onCreate(async (snapshot, context) => {
+    const documentId = context.params.documentId;
+    const data = snapshot.data();
+
+    const locationToRequestDataFrom = data.location;
+
+    const dataFromRequestedLocation = await admin
+      .firestore()
+      .collection("environment_sensors_data")
+      .where("location", "==", locationToRequestDataFrom)
+      .get();
+
+    const userIds = new Set();
+    dataFromRequestedLocation.forEach((doc) => {
+      const data = doc.data();
+      userIds.add(data.uid);
+    });
+
+    const userTokenDocuments = await admin
+      .firestore()
+      .collection("user_tokens")
+      .get();
+
+    userTokenDocuments.forEach(async (doc) => {
+      const docId = doc.id; // This is the user ID
+      const data = doc.data();
+      const token = data.token;
+
+      if (userIds.has(docId)) {
+        try {
+          // Send a notification to the user to sync data
+          const message = {
+            notification: {
+              title: `New data request for ${locationToRequestDataFrom}`,
+              body: "A user is requesting data from your location",
+            },
+            token,
+          };
+
+          await admin.messaging().send(message);
+
+          console.log(
+            `Notification sent to user ${docId} for document ${documentId}`
+          );
+        } catch (error) {
+          console.error("Error sending notification", error);
+        }
+      }
+    });
     return null;
   });
